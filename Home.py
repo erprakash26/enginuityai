@@ -3,12 +3,11 @@ from pathlib import Path
 from textwrap import dedent
 import streamlit as st
 from ui.theme import load_css
-import streamlit as st
-from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()
 
 st.set_page_config(page_title="Enginuity AI", page_icon="⚙️", layout="wide")
+
 # Load CSS directly
 css_file = Path("ui/theme/base.css")
 if css_file.exists():
@@ -22,6 +21,59 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 load_css("base.css")
+
+# --- Style only for Get Started + footer + no scroll ---
+st.markdown(
+    """
+    <style>
+      /* Make only the Get Started CTA clearer */
+      .cta-btn {
+        display: inline-block;
+        padding: 0.9rem 2rem;
+        font-size: 1.1rem;
+        font-weight: 600;
+        background-color: #2563eb;
+        color: #ffffff !important;
+        border-radius: 8px;
+        text-decoration: none;
+        border: none;
+        transition: background 0.2s ease, transform 0.2s ease;
+      }
+      .cta-btn:hover {
+        background-color: #1d4ed8;
+        transform: translateY(-2px);
+      }
+
+      /* Prevent scrolling */
+      html, body, [data-testid="stAppViewContainer"] {
+        height: 100%;
+        overflow: hidden;
+      }
+
+      /* Main container adjustments for footer space */
+      [data-testid="stMain"] .block-container {
+        padding-top: 2rem;
+        padding-bottom: 4rem;
+      }
+
+      /* Footer (no background) */
+      .eng-footer {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 8px;
+        text-align: center;
+        font-size: 0.9rem;
+        color: #64748b;
+      }
+      [data-theme="dark"] .eng-footer {
+        color: #94a3b8;
+      }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # --- Hero Banner (clean, no demo box) ---
 st.markdown(
@@ -38,7 +90,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# --- Features Grid ---
+# --- Features Grid (unchanged) ---
 st.markdown(
     dedent("""
     <section class="features">
@@ -54,3 +106,4 @@ st.markdown(
     """),
     unsafe_allow_html=True,
 )
+
