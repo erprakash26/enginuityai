@@ -4,6 +4,7 @@ from pathlib import Path
 import json
 import random
 import os
+import uuid
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from ui.bootstrap import ensure_corpus
@@ -55,8 +56,14 @@ if not st.session_state.get("has_corpus"):
 st.markdown('<div class="quiz-page">', unsafe_allow_html=True)
 st.title("Quiz")
 
+# ---------- Data paths ----------
 DATA_DIR = Path("data")
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
 NOTES_JSON = DATA_DIR / "notes.json"
+SNAPSHOTS_FILE = DATA_DIR / "quiz_snapshots.jsonl"
+ATTEMPTS_FILE = DATA_DIR / "quiz_attempts.jsonl"
+
 lecture_title = "Notes"
 if NOTES_JSON.exists():
     try:
@@ -70,6 +77,89 @@ if NOTES_JSON.exists():
             )
     except Exception:
         pass
+
+# ---------- Local history helpers (JSONL) ----------
+def _now_iso() -> str:
+    return datetime.now().isoformat()
+
+def _append_jsonl(path: Path, obj: dict) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+    except Exception as e:
+        st.warning(f"Could not write to {path.name}: {e}")
+
+def save_quiz_snapshot(meta: dict, items: list) -> str:
+    """Persist exactly what the user sees after Generate."""
+    snapshot_id = str(uuid.uuid4())
+    rec = {
+        "snapshot_id": snapshot_id,
+        "created_at": _now_iso(),
+        "meta": meta,
+        "items": items,
+    }
+    _append_jsonl(SNAPSHOTS_FILE, rec)
+    return snapshot_id
+
+def save_quiz_attempt(snapshot_id: Optional[str], meta: dict, review: list, started_at: str, submitted_at: str) -> str:
+    """Persist a graded attempt with per-question review."""
+    attempt_id = str(uuid.uuid4())
+    score_raw = sum(1 for r in review if r.get("ok"))
+    score_max = max(1, len(review))
+    rec = {
+        "attempt_id": attempt_id,
+        "snapshot_id": snapshot_id,
+        "lecture": meta.get("lecture"),
+        "type": meta.get("type"),
+        "difficulty": meta.get("difficulty"),
+        "topic": meta.get("topic"),
+        "started_at": started_at,
+        "submitted_at": submitted_at,
+        "saved_at": _now_iso(),
+        "score_raw": score_raw,
+        "score_max": score_max,
+        "score_pct": round(100.0 * score_raw / score_max, 2),
+        "items": review,
+    }
+    _append_jsonl(ATTEMPTS_FILE, rec)
+    return attempt_id
+
+def load_attempts(lecture: Optional[str] = None, limit: int = 20) -> list[dict]:
+    """Read latest attempts (optionally filtered by lecture)."""
+    if not ATTEMPTS_FILE.exists():
+        return []
+    rows: list[dict] = []
+    try:
+        with ATTEMPTS_FILE.open("r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    obj = json.loads(line)
+                    if (lecture is None) or (obj.get("lecture") == lecture):
+                        rows.append(obj)
+                except Exception:
+                    pass
+        rows.sort(key=lambda r: r.get("submitted_at") or r.get("saved_at") or "", reverse=True)
+        return rows[:limit]
+    except Exception:
+        return []
+
+def load_snapshot(snapshot_id: str) -> Optional[dict]:
+    """Find a snapshot by id from quiz_snapshots.jsonl."""
+    if not snapshot_id or not SNAPSHOTS_FILE.exists():
+        return None
+    try:
+        with SNAPSHOTS_FILE.open("r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    obj = json.loads(line)
+                    if obj.get("snapshot_id") == snapshot_id:
+                        return obj
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return None
 
 # ---------- Helpers ----------
 def reset_attempt_state() -> None:
@@ -198,6 +288,14 @@ if generated:
         "generated_at": datetime.now().isoformat(),
         "section_ids": section_ids,
     }
+    # mark quiz start time
+    st.session_state["quiz_started_at"] = datetime.now().isoformat()
+
+    # Save a local snapshot of exactly what was generated (for history)
+    snapshot_id = save_quiz_snapshot(meta=st.session_state["quiz_meta"], items=st.session_state["quiz_items"])
+    st.session_state["quiz_snapshot_id"] = snapshot_id
+    st.caption(f"Snapshot saved · id: `{snapshot_id[:8]}…`")
+
     reset_attempt_state()
 
 items = st.session_state.get("quiz_items", [])
@@ -212,6 +310,10 @@ else:
     st.caption(f"{meta.get('n', len(items))} questions{focus}")
     if meta.get("section_ids"):
         st.caption(f"Scoped to {len(meta['section_ids'])} section(s)")
+
+    # Ensure a start timestamp if page re-renders
+    if "quiz_started_at" not in st.session_state:
+        st.session_state["quiz_started_at"] = datetime.now().isoformat()
 
     # Render each item
     for i, item in enumerate(items, 1):
@@ -250,6 +352,8 @@ else:
                     shuf, _ = shuffle_choices(it["choices"], it["answer"])
                     it["choices_shuf"] = shuf
             reset_attempt_state()
+            # new start time for the retake
+            st.session_state["quiz_started_at"] = datetime.now().isoformat()
 
     # ---------- Grade & Review ----------
     if submit and not st.session_state.get("quiz_submitted"):
@@ -277,6 +381,19 @@ else:
         st.session_state["quiz_submitted"] = True
         st.session_state["quiz_score"] = {"correct": correct, "total": len(items), "review": review}
 
+        # Persist attempt locally
+        started_at_iso = st.session_state.get("quiz_started_at") or datetime.now().isoformat()
+        submitted_at_iso = datetime.now().isoformat()
+        attempt_id = save_quiz_attempt(
+            snapshot_id=st.session_state.get("quiz_snapshot_id"),
+            meta=meta,
+            review=review,
+            started_at=started_at_iso,
+            submitted_at=submitted_at_iso,
+        )
+        st.session_state["quiz_attempt_id"] = attempt_id
+        st.caption(f"Attempt saved · id: `{attempt_id[:8]}…`")
+
     # Show results if submitted
     if st.session_state.get("quiz_submitted"):
         sc = st.session_state["quiz_score"]
@@ -292,6 +409,54 @@ else:
                     st.write(f"**Correct:** {r['answer']}")
                 if r.get("explanation"):
                     st.info(r["explanation"])
+
+        # Past attempts (for this lecture)
+# Past attempts (for this lecture) — with full Q/A details (no nested expanders)
+st.markdown("### Past attempts")
+past = load_attempts(lecture=meta.get("lecture"))
+if not past:
+    st.caption("No attempts saved yet.")
+else:
+    for a in past[:10]:
+        when = (a.get("submitted_at") or a.get("saved_at") or "")[:16]
+        title = (
+            f"{when} · {a.get('lecture','Notes')} · "
+            f"{a.get('type','MCQ')} · {a.get('difficulty','Auto')} · "
+            f"Score: {a['score_raw']}/{a['score_max']} ({a['score_pct']}%) · "
+            f"id: {a['attempt_id'][:8]}…"
+        )
+
+        with st.expander(title):
+            # Type-safe access to snapshot_id (silences Pylance)
+            snapshot_id = a.get("snapshot_id")
+            snap = load_snapshot(snapshot_id) if isinstance(snapshot_id, str) else None
+            snap_items = snap.get("items", []) if snap else []
+
+            # Per-question review
+            for r in a.get("items", []):
+                idx = int(r.get("i", 0))
+                q_text = r.get("q", "")
+                your = r.get("your", "—")
+                gold = r.get("answer", "")
+                ok = bool(r.get("ok"))
+                expl = r.get("explanation")
+
+                st.markdown("---")
+                st.markdown(f"**Q{idx}.** {q_text}")
+                st.write(("✅ **Correct**" if ok else "❌ **Incorrect**") + f" — Your answer: `{your}`")
+                if not ok:
+                    st.write(f"**Correct:** `{gold}`")
+                if expl:
+                    st.caption(f"Explanation: {expl}")
+
+                # If we have the snapshot, show original choices (if MCQ)
+                try:
+                    snap_item = snap_items[idx - 1] if idx - 1 >= 0 else None
+                except Exception:
+                    snap_item = None
+                if snap_item and snap_item.get("choices_shuf"):
+                    st.caption("Choices from original quiz:")
+                    st.write(" · ".join(f"`{c}`" for c in snap_item["choices_shuf"]))
 
 # ---------- Notes ----------
 # Backend contract: POST /quiz
