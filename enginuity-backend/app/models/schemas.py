@@ -1,5 +1,6 @@
+# app/models/schemas.py
+from typing import List, Any, Dict, Optional
 from pydantic import BaseModel
-from typing import List, Optional, Any
 
 class SearchHit(BaseModel):
     title: str
@@ -25,20 +26,6 @@ class QuizRequest(BaseModel):
     difficulty: str = "auto"
     topic: str | None = None
 
-class ChatMessage(BaseModel):
-    role: str
-    content: Any
-
-class ChatRequest(BaseModel):
-    messages: List[ChatMessage]
-    top_k: int = 5
-    temperature: float = 0.2
-    ctx_mode: str = "notes"  # notes|notes+web
-
-class ChatResponse(BaseModel):
-    text: str
-    citations: List[dict] = []
-
 class NotesDoc(BaseModel):
     lecture_title: str = "Notes"
     generated_at: int | None = None
@@ -46,3 +33,19 @@ class NotesDoc(BaseModel):
 
 class ExportRequest(BaseModel):
     format: str = "pdf"  # pdf|docx|anki|md
+
+
+class ChatMessage(BaseModel):
+    role: str  # "user", "assistant", "system"
+    content: Any  # you can keep this as str if you prefer
+
+
+class ChatRequest(BaseModel):
+    messages: List[ChatMessage]
+    top_k: Optional[int] = 5
+    temperature: Optional[float] = 0.2
+
+
+class ChatResponse(BaseModel):
+    text: str
+    citations: List[Dict[str, Any]] = []

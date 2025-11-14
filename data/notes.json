@@ -1,18 +1,24 @@
 {
-  "lecture_title": "Cover Letter K M Zubair",
-  "generated_at": 1760079180,
+  "lecture_title": "theory_of_relativity_full_page",
+  "generated_at": 1763105712,
   "sections": [
     {
       "id": "sec-1",
       "title": "Section 1",
       "type": "text",
-      "content": "Dear Hiring Team at Context, \n \nI am thrilled to apply for the Full-Stack Developer Intern position at Context. My expertise in MERN \nstack development, coupled with hands-on experience implementing AI solutions like Retrieval-\nAugmented Generation (RAG), aligns perfectly with Context\u2019s mission to revolutionize AI-powered \nlearning. \n \nIn my role at CoolRiots, I built and optimized AI-driven platforms using React, Node.js, and \nMongoDB, increasing system scalability by 40%. I also integrated OpenAI APIs and LangChain to \nenhance user experiences through intelligent features. These experiences highlight my ability to \ndeliver scalable and efficient solutions in dynamic environments. \n \nAt Graduate School of Management UIA, I developed a full-stack web application, improving \nresponse times by 25% and streamlining the user interface for over 1,000 students. I thrive in \ncollaborative environments and look forward to contributing to Context\u2019s innovative projects with \nyour multidisciplinary team. \n \nI am excited about the opportunity to bring my technical expertise and passion for AI to Context. \nThank you for considering my application; I look forward to discussing how I can contribu"
+      "content": "Theory of Relativity \u2014 Full OneIPage Summary\nAlbert Einstein\u2019s Theory of Relativity transformed modern physics by redefining time, space,\nenergy, and gravity. It has two major parts: Special Relativity (1905) and General Relativity (1915).\nBoth are essential for modern astronomy, GPS, particle physics, and cosmology.\nSpecial Relativity (SR)\nSR applies to objects moving at constant velocity. It is based on two principles: 1) The laws of physics\nare identical in all inertial frames. 2) The speed of light in vacuum (c = 3\u00d710I m/s) is constant for all\nobservers. Key consequences include: \u2022 Time dilation: A fast-moving clock runs slower compared to\na stationary one. \u2022 Length contraction: Objects contract along the direction of motion when moving\nnear light speed. \u2022 Relativity of simultaneity: Events that seem simultaneous for one observer may\nnot be for another. \u2022 Mass\u2013energy equivalence: Expressed by E = mc\u00b2, showing that mass is a form\nof stored energy. These ideas explain particle accelerator behavior, muon decay, and highIspeed\nspacecraft predictions.\nGeneral Relativity (GR)\nGR extends relativity to accelerated motion and gravity. The central idea is that gravity is not a force\nbut"
     },
     {
       "id": "sec-2",
       "title": "Section 2",
       "type": "text",
-      "content": "te to your \ngoals. \n \nBest regards, \nK. M. Zubair \n(925) 860 9928 | contactk.m.zubair@gmail.com | [LinkedIn]"
+      "content": "the curvature of spacetime caused by mass and energy. Key GR concepts include: \u2022\nSpacetime curvature: Massive bodies bend spacetime, causing nearby objects to follow curved\npaths. \u2022 Geodesics: FreeIfalling objects move along the straightest possible paths in curved\nspacetime. \u2022 Gravitational time dilation: Time runs slower in stronger gravitational fields. \u2022\nGravitational lensing: Light bends around massive objects, magnifying distant galaxies. \u2022 Black\nholes: Regions where curvature becomes infinite and nothing\u2014not even light\u2014can escape. \u2022\nGravitational waves: Ripples in spacetime caused by massive accelerating bodies (detected in\n2015). GR correctly predicts Mercury\u2019s orbit, black hole shadows, and the expansion of the universe.\nModern Applications\n\u2022 GPS: Requires both SR (satellite motion) and GR (weaker gravity in orbit) corrections to remain\naccurate. \u2022 Astrophysics: Used to model neutron stars, galaxy formation, black holes, and cosmic\nevolution. \u2022 Cosmology: Foundation of the Big Bang theory and dark matter/dark energy research. \u2022\nHighIenergy physics: Helps interpret observations in particle accelerators and cosmicIray studies.\nFamous Confirmations\n\u2022 1919 Eddington expedition"
+    },
+    {
+      "id": "sec-3",
+      "title": "Section 3",
+      "type": "text",
+      "content": "proved that starlight bends around the Sun. \u2022 1971 Hafele\u2013Keating\nexperiment showed measurable time dilation on atomic clocks flown on airplanes. \u2022 LIGO\n(2015\u2013present) confirmed gravitational waves predicted a century earlier. This full oneIpage text\nincludes enough detail for generating quizzes, flashcards, or advanced conceptual questions."
     }
   ]
 }

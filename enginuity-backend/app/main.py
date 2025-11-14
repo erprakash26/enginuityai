@@ -3,6 +3,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.routers import health, notes, search, quiz, chat, export, upload, corpus
+import os
+os.environ["CHROMA_TELEMETRY_ENABLED"] = "false"
+os.environ["ANONYMIZED_TELEMETRY"] = "false"
 
 # Load settings
 settings = get_settings()
