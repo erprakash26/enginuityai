@@ -3,10 +3,20 @@ from pathlib import Path
 from textwrap import dedent
 import streamlit as st
 from ui.theme import load_css
-from dotenv import load_dotenv
-load_dotenv()
+#from dotenv import load_dotenv
+#load_dotenv()
 
 import streamlit as st
+
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # On environments where python-dotenv isn't installed,
+    # just skip loading .env and rely on real env vars / st.secrets
+    pass
+
 
 st.set_page_config(page_title="EnginuityAI (Debug Mode)")
 
