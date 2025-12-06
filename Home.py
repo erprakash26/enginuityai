@@ -6,6 +6,19 @@ from ui.theme import load_css
 from dotenv import load_dotenv
 load_dotenv()
 
+import streamlit as st
+
+st.set_page_config(page_title="EnginuityAI (Debug Mode)")
+
+st.write("App booted – debug mode is running")
+
+def main():
+    st.write(" main() reached")
+
+if __name__ == "__main__":
+    main()
+
+
 st.set_page_config(page_title="Enginuity AI", page_icon="⚙️", layout="wide")
 
 # Load CSS directly
