@@ -1,15 +1,24 @@
-# upload.py
 import sys
 from pathlib import Path
+import time
+import json
+import os
+
+import streamlit as st
+import requests  # for backend calls
+
+# Make sure ROOT is on sys.path so ui.theme can be imported
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import time
-import json
-import os
-import streamlit as st
-import requests  # use requests instead of httpx
+# Try to import load_css; if it fails, define a no-op stub
+try:
+    from ui.theme import load_css
+except ImportError:
+    def load_css(_filename: str) -> None:
+        # Fallback: do nothing if the CSS loader isn't available
+        pass
 
 
 # IMPORTANT: set_page_config should be called once in the main app page only (e.g., Home.py).
