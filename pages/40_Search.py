@@ -1,4 +1,5 @@
-# search.py
+# 40_Search.py 
+
 import sys
 from pathlib import Path
 import re
@@ -6,15 +7,21 @@ import json
 import os
 from datetime import datetime
 from typing import Dict
-import httpx
-import streamlit as st
-from ui.bootstrap import ensure_corpus
-from ui.theme import load_css
 
 # --- Path setup ---
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+# Try to import httpx, but don't crash if it's missing
+try:
+    import httpx  # type: ignore
+except ImportError:
+    httpx = None  # type: ignore
+
+import streamlit as st
+from ui.bootstrap import ensure_corpus
+from ui.theme import load_css
 
 # --- Page setup ---
 # st.set_page_config(page_title="Search", page_icon="🔍", layout="wide")
@@ -68,7 +75,11 @@ with st.form("search_form", clear_on_submit=False):
     submitted = st.form_submit_button("Search", use_container_width=False)
 
 # --- Mode mapping ---
-mode_map: Dict[str, str] = {"Hybrid": "hybrid", "Keyword": "keyword", "Semantic": "semantic"}
+mode_map: Dict[str, str] = {
+    "Hybrid": "hybrid",
+    "Keyword": "keyword",
+    "Semantic": "semantic",
+}
 FASTAPI_URL = os.getenv("FASTAPI_URL", "http://127.0.0.1:8000")
 
 # --- Run search ---
@@ -77,20 +88,23 @@ if submitted:
     if not q_clean:
         st.warning("Please enter a query.")
     else:
-        # Guarded lookup for Pylance
-        sel_mode: str = mode_map[mode] if mode in mode_map else "hybrid"
+        sel_mode: str = mode_map.get(mode, "hybrid")
 
         try:
-            with st.spinner("Searching…"):
-                resp = httpx.post(
-                    f"{FASTAPI_URL}/search",
-                    json={"q": q_clean, "top_k": int(top_k), "mode": sel_mode},
-                    timeout=30.0,
-                )
-                resp.raise_for_status()
-                st.session_state["search_hits"] = resp.json()
+            if httpx is not None and FASTAPI_URL:
+                with st.spinner("Searching…"):
+                    resp = httpx.post(
+                        f"{FASTAPI_URL}/search",
+                        json={"q": q_clean, "top_k": int(top_k), "mode": sel_mode},
+                        timeout=30.0,
+                    )
+                    resp.raise_for_status()
+                    st.session_state["search_hits"] = resp.json()
+            else:
+                # Force fallback if httpx is missing or FASTAPI_URL empty
+                raise RuntimeError("Backend search not available (httpx or FASTAPI_URL missing)")
         except Exception as e:
-            st.error(f"Search failed: {e}")
+            st.error(f"Search failed or backend unavailable, showing demo results. ({e})")
             # graceful fallback
             st.session_state["search_hits"] = [
                 {
