@@ -1,4 +1,5 @@
-# quiz.py
+# 50_Quiz.py (Quiz page)
+
 import sys
 from pathlib import Path
 import json
@@ -7,48 +8,40 @@ import os
 import uuid
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from ui.bootstrap import ensure_corpus
 
+# --- Ensure project root is on sys.path BEFORE ui imports ---
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import streamlit as st
 from ui.theme import load_css
-import httpx  # NEW
+from ui.bootstrap import ensure_corpus
+
+# Try to import httpx, but don't crash if missing
+try:
+    import httpx  # type: ignore
+except ImportError:
+    httpx = None  # type: ignore
 
 # IMPORTANT: set_page_config should be called only once in the main entry page.
 # st.set_page_config(page_title="Quiz", page_icon="🧩", layout="wide")
 
 load_css("base.css")
 
+# ---------- Corpus readiness ----------
 ready = ensure_corpus()
 if not ready:
     st.warning("No saved corpus found. Upload and process a lecture to generate quizzes.")
     try:
-        st.page_link("pages/Upload.py", label="Go to Upload", icon="📤")
-    except Exception:
-        pass
-    # You may continue; the page can still use local notes.json as fallback
-    # st.stop()
-
-# prefer backend-provided meta when available
-if st.session_state.get("lecture_title"):
-    lecture_title = st.session_state["lecture_title"]
-if st.session_state.get("generated_at"):
-    try:
-        ts = int(st.session_state["generated_at"])
-        st.caption(
-            f"Lecture: **{lecture_title}** · Generated: "
-            f"{datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M')}"
-        )
+        st.page_link("pages/10_Upload.py", label="Go to Upload", icon="📤")
     except Exception:
         pass
 
 if not st.session_state.get("has_corpus"):
     st.warning("Upload and process a lecture to generate quizzes.")
     try:
-        st.page_link("pages/Upload.py", label="Go to Upload", icon="📤")
+        st.page_link("pages/10_Upload.py", label="Go to Upload", icon="📤")
     except Exception:
         pass
     st.stop()
@@ -64,8 +57,20 @@ NOTES_JSON = DATA_DIR / "notes.json"
 SNAPSHOTS_FILE = DATA_DIR / "quiz_snapshots.jsonl"
 ATTEMPTS_FILE = DATA_DIR / "quiz_attempts.jsonl"
 
-lecture_title = "Notes"
-if NOTES_JSON.exists():
+lecture_title = st.session_state.get("lecture_title", "Notes")
+generated_at = st.session_state.get("generated_at")
+
+if generated_at:
+    try:
+        ts = int(generated_at)
+        st.caption(
+            f"Lecture: **{lecture_title}** · Generated: "
+            f"{datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M')}"
+        )
+    except Exception:
+        pass
+elif NOTES_JSON.exists():
+    # Fallback: read from notes.json
     try:
         doc = json.loads(NOTES_JSON.read_text(encoding="utf-8"))
         lecture_title = doc.get("lecture_title", lecture_title)
@@ -102,7 +107,13 @@ def save_quiz_snapshot(meta: dict, items: list) -> str:
     _append_jsonl(SNAPSHOTS_FILE, rec)
     return snapshot_id
 
-def save_quiz_attempt(snapshot_id: Optional[str], meta: dict, review: list, started_at: str, submitted_at: str) -> str:
+def save_quiz_attempt(
+    snapshot_id: Optional[str],
+    meta: dict,
+    review: list,
+    started_at: str,
+    submitted_at: str,
+) -> str:
     """Persist a graded attempt with per-question review."""
     attempt_id = str(uuid.uuid4())
     score_raw = sum(1 for r in review if r.get("ok"))
@@ -163,7 +174,7 @@ def load_snapshot(snapshot_id: str) -> Optional[dict]:
 
 # ---------- Helpers ----------
 def reset_attempt_state() -> None:
-    st.session_state["quiz_answers"] = {}      # question_idx -> user answer (string)
+    st.session_state["quiz_answers"] = {}      # question_idx -> user answer
     st.session_state["quiz_submitted"] = False
     st.session_state["quiz_score"] = None
 
@@ -182,11 +193,97 @@ def load_local_sections() -> List[Dict[str, Any]]:
         try:
             _doc = json.loads(NOTES_JSON.read_text(encoding="utf-8"))
             secs = _doc.get("sections", [])
-            # keep only blocks that have content
             return [s for s in secs if s.get("content")]
         except Exception:
             return []
     return []
+
+def local_quiz_from_sections(
+    n: int,
+    qtype: str,
+    topic_seed: str,
+    sections: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    Simple local quiz generator if backend or httpx is unavailable.
+    Uses section content to create very basic MCQs / FIBs.
+    """
+    if not sections:
+        # fallback dummy quiz
+        base = [
+            {
+                "q": "What does Laplace transform do?",
+                "choices": [
+                    "Transforms a time-domain signal into the s-domain",
+                    "Compresses images",
+                    "Sorts arrays",
+                    "Compiles C code",
+                ],
+                "answer": "Transforms a time-domain signal into the s-domain",
+                "explanation": "Laplace transform converts time-domain functions into complex frequency domain.",
+            },
+            {
+                "q": "A linear system is stable if all poles lie in which region?",
+                "choices": [
+                    "Right half-plane",
+                    "Left half-plane",
+                    "On the imaginary axis",
+                    "On the real axis",
+                ],
+                "answer": "Left half-plane",
+                "explanation": "For continuous-time LTI systems, stability requires poles in the left half-plane.",
+            },
+        ]
+        return base[:n]
+
+    # crude question extraction from text
+    items: List[Dict[str, Any]] = []
+    pool: List[str] = []
+    for s in sections:
+        txt = str(s.get("content") or "")
+        for line in txt.split("\n"):
+            line = line.strip()
+            if len(line) > 40:
+                pool.append(line)
+
+    random.shuffle(pool)
+    for line in pool[: n * 2]:  # oversample a bit
+        if len(items) >= n:
+            break
+        if qtype.lower() in ("fib", "fill-in-the-blank"):
+            # Pick a word from the line
+            words = [w for w in re.split(r"\s+", line) if len(w) > 3]
+            if not words:
+                continue
+            answer = random.choice(words)
+            q = line.replace(answer, "____", 1)
+            items.append(
+                {
+                    "q": q,
+                    "choices": [],
+                    "answer": answer,
+                    "explanation": line,
+                }
+            )
+        else:
+            # simple MCQ: ask "This statement is about which topic?"
+            topic = topic_seed or "this concept"
+            items.append(
+                {
+                    "q": f"This statement is most related to which topic?\n\n“{line}”",
+                    "choices": [
+                        topic,
+                        "Unrelated topic A",
+                        "Unrelated topic B",
+                        "Unrelated topic C",
+                    ],
+                    "answer": topic,
+                    "explanation": line,
+                }
+            )
+    if not items:
+        return local_quiz_from_sections(n, "mcq", topic_seed, [])
+    return items[:n]
 
 # ---------- Section scope (optional) ----------
 all_sections = load_local_sections()
@@ -196,7 +293,7 @@ with st.expander("Section scope (optional)"):
     picked_titles = st.multiselect(
         "Only generate questions from these sections",
         options=section_titles,
-        default=section_titles[:4] if section_titles else []
+        default=section_titles[:4] if section_titles else [],
     )
     picked = [s for s in all_sections if s.get("title", "Untitled") in picked_titles]
 
@@ -211,7 +308,7 @@ with st.form("quiz_controls"):
 
 FASTAPI_URL = (os.getenv("FASTAPI_URL", "http://127.0.0.1:8000") or "").rstrip("/")
 
-# ---------- Generate via backend ----------
+# ---------- Generate Quiz (backend if possible, else local) ----------
 if generated:
     # Build scoped context from selected sections (or all sections if none picked)
     section_ids: List[str] = [s.get("id", "") for s in picked] if picked else []
@@ -230,18 +327,16 @@ if generated:
             raw_context_parts.append(f"{title}\n{content}\n")
 
     context_text = "\n\n".join(raw_context_parts).strip()
-
-    # cap payload size to keep requests snappy
     if len(context_text) > 12000:
         context_text = context_text[:12000]
 
-    # Guard: don't submit if there is no study text
     if not context_text.strip() and not (topic_seed and topic_seed.strip()):
-        st.error("No study material found. Select relevant sections or provide a topic focus.")
+        st.error("No study material found. Select sections or provide a topic focus.")
         st.stop()
 
-    # Small debug badge so you know what's being sent
     st.caption(f"Context chars: {len(context_text)}")
+
+    items_from_api: List[Dict[str, Any]] = []
 
     payload: Dict[str, Any] = {
         "n": int(n_questions),
@@ -249,26 +344,35 @@ if generated:
         "difficulty": str((difficulty or "Auto")).lower(),
         "topic": topic_seed or None,
         "section_ids": section_ids or None,
-        "context": context_text or None,    # backend prefers this
+        "context": context_text or None,
         "corpus_id": st.session_state.get("corpus_id"),
         "lecture_title": lecture_title,
     }
-
-    # normalize qtype to what backend expects
     if payload["type"] in ("fill-in-the-blank", "fill in the blank", "fill_in_the_blank"):
         payload["type"] = "fib"
 
-    try:
-        with st.spinner("Generating quiz…"):
-            # Accept both /quiz and /quiz/ (router supports both)
-            r = httpx.post(f"{FASTAPI_URL}/quiz", json=payload, timeout=60.0)
-            r.raise_for_status()
-            items_from_api: List[Dict[str, Any]] = r.json() or []
-    except Exception as e:
-        st.error(f"Quiz generation failed: {e}")
-        items_from_api = []
+    used_backend = False
+    if httpx is not None and FASTAPI_URL:
+        try:
+            with st.spinner("Generating quiz from backend…"):
+                r = httpx.post(f"{FASTAPI_URL}/quiz", json=payload, timeout=60.0)
+                r.raise_for_status()
+                items_from_api = r.json() or []
+                used_backend = True
+        except Exception as e:
+            st.warning(f"Backend quiz generation failed, falling back to local quiz. ({e})")
 
-    # Prepare a view-model with shuffled choices (don’t mutate originals)
+    if not used_backend:
+        # local fallback
+        st.info("Using local quiz generation (backend/httpx not available).")
+        items_from_api = local_quiz_from_sections(
+            n=int(n_questions),
+            qtype=payload["type"],
+            topic_seed=topic_seed or "this lecture",
+            sections=(picked or all_sections),
+        )
+
+    # Prepare view-model with shuffled choices
     vm: List[Dict[str, Any]] = []
     for it in items_from_api:
         choices = it.get("choices", [])
@@ -288,74 +392,77 @@ if generated:
         "generated_at": datetime.now().isoformat(),
         "section_ids": section_ids,
     }
-    # mark quiz start time
     st.session_state["quiz_started_at"] = datetime.now().isoformat()
 
-    # Save a local snapshot of exactly what was generated (for history)
-    snapshot_id = save_quiz_snapshot(meta=st.session_state["quiz_meta"], items=st.session_state["quiz_items"])
+    snapshot_id = save_quiz_snapshot(
+        meta=st.session_state["quiz_meta"],
+        items=st.session_state["quiz_items"],
+    )
     st.session_state["quiz_snapshot_id"] = snapshot_id
     st.caption(f"Snapshot saved · id: `{snapshot_id[:8]}…`")
 
     reset_attempt_state()
 
+# ---------- Render Quiz ----------
 items = st.session_state.get("quiz_items", [])
 meta = st.session_state.get("quiz_meta", {})
 
 if not items:
     st.info("Set your preferences above and click **Generate Quiz**.")
 else:
-    # ---------- Render Quiz ----------
-    st.subheader(f"{meta.get('lecture','Notes')} · {meta.get('type','MCQ')} · {meta.get('difficulty','Auto')}")
+    st.subheader(
+        f"{meta.get('lecture','Notes')} · "
+        f"{meta.get('type','MCQ')} · "
+        f"{meta.get('difficulty','Auto')}"
+    )
     focus = f" · Focus: {meta['topic']}" if meta.get("topic") else ""
     st.caption(f"{meta.get('n', len(items))} questions{focus}")
     if meta.get("section_ids"):
         st.caption(f"Scoped to {len(meta['section_ids'])} section(s)")
 
-    # Ensure a start timestamp if page re-renders
     if "quiz_started_at" not in st.session_state:
         st.session_state["quiz_started_at"] = datetime.now().isoformat()
 
-    # Render each item
     for i, item in enumerate(items, 1):
         st.markdown("<div class='quiz-card'>", unsafe_allow_html=True)
         st.write(f"**{i}.** {item.get('q', '')}")
 
-        # MCQ
         if item.get("choices_shuf"):
             user = st.radio(
                 "Choose:",
                 options=item["choices_shuf"],
                 key=f"ans-{i}",
                 horizontal=True,
-                index=None  # start with nothing selected
+                index=None,
             )
+            st.session_state.setdefault("quiz_answers", {})
             st.session_state["quiz_answers"][i] = user or ""
         else:
-            # Fill-in-the-blank
             user = st.text_input("Your answer", key=f"ans-{i}")
+            st.session_state.setdefault("quiz_answers", {})
             st.session_state["quiz_answers"][i] = (user or "").strip()
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # Actions (submit / download / reset)
     c1, c2, c3 = st.columns([1, 1, 2])
     with c1:
         submit = st.button("Submit All ✅")
     with c2:
         dl_payload = {"meta": meta, "items": items}
-        st.download_button("Download .json", data=json.dumps(dl_payload, indent=2), file_name="quiz.json")
+        st.download_button(
+            "Download .json",
+            data=json.dumps(dl_payload, indent=2),
+            file_name="quiz.json",
+        )
     with c3:
         if st.button("Retake / Regenerate 🔁"):
-            # Keep the same parameters; reshuffle choices
             for it in items:
                 if it.get("choices"):
                     shuf, _ = shuffle_choices(it["choices"], it["answer"])
                     it["choices_shuf"] = shuf
             reset_attempt_state()
-            # new start time for the retake
             st.session_state["quiz_started_at"] = datetime.now().isoformat()
 
-    # ---------- Grade & Review ----------
     if submit and not st.session_state.get("quiz_submitted"):
         answers = st.session_state.get("quiz_answers", {})
         correct = 0
@@ -369,19 +476,24 @@ else:
             else:
                 ok = pred.strip().lower() == gold.strip().lower()
             correct += int(ok)
-            review.append({
-                "i": i,
-                "q": it.get("q", ""),
-                "your": pred or "—",
-                "answer": gold,
-                "ok": ok,
-                "explanation": it.get("explanation", ""),
-            })
+            review.append(
+                {
+                    "i": i,
+                    "q": it.get("q", ""),
+                    "your": pred or "—",
+                    "answer": gold,
+                    "ok": ok,
+                    "explanation": it.get("explanation", ""),
+                }
+            )
 
         st.session_state["quiz_submitted"] = True
-        st.session_state["quiz_score"] = {"correct": correct, "total": len(items), "review": review}
+        st.session_state["quiz_score"] = {
+            "correct": correct,
+            "total": len(items),
+            "review": review,
+        }
 
-        # Persist attempt locally
         started_at_iso = st.session_state.get("quiz_started_at") or datetime.now().isoformat()
         submitted_at_iso = datetime.now().isoformat()
         attempt_id = save_quiz_attempt(
@@ -394,7 +506,6 @@ else:
         st.session_state["quiz_attempt_id"] = attempt_id
         st.caption(f"Attempt saved · id: `{attempt_id[:8]}…`")
 
-    # Show results if submitted
     if st.session_state.get("quiz_submitted"):
         sc = st.session_state["quiz_score"]
         pct = 100.0 * sc["correct"] / max(1, sc["total"])
@@ -410,10 +521,9 @@ else:
                 if r.get("explanation"):
                     st.info(r["explanation"])
 
-        # Past attempts (for this lecture)
-# Past attempts (for this lecture) — with full Q/A details (no nested expanders)
+# ---------- Past attempts ----------
 st.markdown("### Past attempts")
-past = load_attempts(lecture=meta.get("lecture"))
+past = load_attempts(lecture=lecture_title)
 if not past:
     st.caption("No attempts saved yet.")
 else:
@@ -427,12 +537,10 @@ else:
         )
 
         with st.expander(title):
-            # Type-safe access to snapshot_id (silences Pylance)
             snapshot_id = a.get("snapshot_id")
             snap = load_snapshot(snapshot_id) if isinstance(snapshot_id, str) else None
             snap_items = snap.get("items", []) if snap else []
 
-            # Per-question review
             for r in a.get("items", []):
                 idx = int(r.get("i", 0))
                 q_text = r.get("q", "")
@@ -449,7 +557,6 @@ else:
                 if expl:
                     st.caption(f"Explanation: {expl}")
 
-                # If we have the snapshot, show original choices (if MCQ)
                 try:
                     snap_item = snap_items[idx - 1] if idx - 1 >= 0 else None
                 except Exception:
@@ -458,12 +565,4 @@ else:
                     st.caption("Choices from original quiz:")
                     st.write(" · ".join(f"`{c}`" for c in snap_item["choices_shuf"]))
 
-# ---------- Notes ----------
-# Backend contract: POST /quiz
-# Request: {
-#   n, type: "mcq"|"fib"|"mix", difficulty, topic?,
-#   section_ids?: string[], context?: string, corpus_id?: string, lecture_title?: string
-# }
-# Response: [ { q, choices?:[], answer, explanation? }, ... ]
-
-st.markdown('</div>', unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
