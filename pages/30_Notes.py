@@ -13,7 +13,12 @@ if str(ROOT) not in sys.path:
 
 import streamlit as st
 from ui.theme import load_css
-import httpx  # NEW
+
+# Try to import httpx, but don't crash if it's missing
+try:
+    import httpx  # type: ignore
+except ImportError:
+    httpx = None  # type: ignore
 
 # IMPORTANT: set_page_config should be called only once in the main entry page.
 # st.set_page_config(page_title="Notes", page_icon="📓", layout="wide")
@@ -62,19 +67,21 @@ def _local_sample() -> Dict[str, Any]:
 
 def load_notes() -> Dict[str, Any]:
     """
-    Tries the backend first (GET /notes). Falls back to local notes.json if present,
-    otherwise returns a small in-memory sample.
+    Tries the backend first (GET /notes) if httpx is available.
+    Falls back to local notes.json if present, otherwise returns a small in-memory sample.
     """
-    # 1) Backend
-    try:
-        with st.spinner("Loading notes from backend…"):
-            r = httpx.get(f"{FASTAPI_URL}/notes", timeout=15.0)
-            r.raise_for_status()
-            doc = r.json()
-            if isinstance(doc, dict) and doc.get("sections"):
-                return doc
-    except Exception:
-        pass
+    # 1) Backend – only if httpx & FASTAPI_URL available
+    if httpx is not None and FASTAPI_URL:
+        try:
+            with st.spinner("Loading notes from backend…"):
+                r = httpx.get(f"{FASTAPI_URL}/notes", timeout=15.0)
+                r.raise_for_status()
+                doc = r.json()
+                if isinstance(doc, dict) and doc.get("sections"):
+                    return doc
+        except Exception:
+            # If backend fails, fall through to local/sample
+            pass
 
     # 2) Local file
     if NOTES_JSON.exists():
