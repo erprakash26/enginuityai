@@ -1,4 +1,5 @@
-# chat.py
+# pages/60_Chat.py
+
 import sys
 import json
 import os
@@ -11,18 +12,23 @@ if str(ROOT) not in sys.path:
 
 import streamlit as st
 from ui.theme import load_css
-import httpx  # NEW
 
-# IMPORTANT: set_page_config should be called only once in the main entry page.
+# Try to import httpx; fall back gracefully if not available
+try:
+    import httpx  # type: ignore
+except ImportError:
+    httpx = None  # we'll handle this later
+
+# IMPORTANT: set_page_config should be called only once in the main entry page (Home.py)
 # st.set_page_config(page_title="AI Assistant", page_icon="🤖", layout="wide")
 
 load_css("base.css")
 
-# Gate until corpus exists
+# ---------- Guard: must have corpus ----------
 if not st.session_state.get("has_corpus"):
     st.warning("Upload and process a lecture to chat with your notes.")
     try:
-        st.page_link("pages/Upload.py", label="Go to Upload", icon="📤")
+        st.page_link("pages/10_Upload.py", label="Go to Upload", icon="📤")
     except Exception:
         pass
     st.stop()
@@ -48,7 +54,9 @@ show_citations = c4.toggle("Show citations", value=True)
 a1, a2 = st.columns([1, 1])
 with a1:
     if st.button("Clear chat 🗑️"):
-        st.session_state["messages"] = [{"role": "assistant", "content": "Ask me about your lecture."}]
+        st.session_state["messages"] = [
+            {"role": "assistant", "content": "Ask me about your lecture."}
+        ]
 with a2:
     export_payload = {
         "meta": {
@@ -62,7 +70,7 @@ with a2:
     st.download_button(
         "Export .json",
         data=json.dumps(export_payload, indent=2),
-        file_name="chat_export.json"
+        file_name="chat_export.json",
     )
 
 st.divider()
@@ -100,17 +108,18 @@ def render_message(msg):
 for m in st.session_state["messages"]:
     render_message(m)
 
-FASTAPI_URL = os.getenv("FASTAPI_URL", "http://127.0.0.1:8000")
+FASTAPI_URL = (os.getenv("FASTAPI_URL", "http://127.0.0.1:8000") or "").rstrip("/")
 
 # ---------- Input ----------
 prompt = st.chat_input("Type your question…")
+
 if prompt:
     # Append user turn
     st.session_state["messages"].append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # ---- Call backend ----
+    # ---- Build payload for backend ----
     payload = {
         "messages": st.session_state["messages"],
         "top_k": int(top_k),
@@ -118,25 +127,46 @@ if prompt:
         "ctx_mode": "notes" if ctx_mode == "Notes only" else "notes+web",
     }
 
-    try:
-        with st.spinner("Thinking…"):
-            resp = httpx.post(f"{FASTAPI_URL}/chat", json=payload, timeout=60.0)
-            resp.raise_for_status()
-            data = resp.json()  # { "text": "...", "citations": [ {...}, ... ] }
-            answer_msg = {
-                "role": "assistant",
-                "content": {"text": data.get("text", "")},
-                "citations": data.get("citations", []),
-            }
-    except Exception as e:
-        # graceful fallback on error
+    # ---- Call backend if httpx is available ----
+    if httpx is None:
+        # Fallback: simple local response if the dependency is missing
         answer_msg = {
             "role": "assistant",
-            "content": {"text": f"Chat failed: {e}"},
+            "content": {
+                "text": (
+                    "The chat backend isn't available because the `httpx` "
+                    "library is not installed in this environment.\n\n"
+                    "You can still ask conceptual questions, but I can't "
+                    "retrieve your indexed notes or web results here."
+                )
+            },
             "citations": [],
         }
+    else:
+        try:
+            with st.spinner("Thinking…"):
+                resp = httpx.post(f"{FASTAPI_URL}/chat", json=payload, timeout=60.0)
+                resp.raise_for_status()
+                data = resp.json()  # { "text": "...", "citations": [ {...}, ... ] }
+                answer_msg = {
+                    "role": "assistant",
+                    "content": {"text": data.get("text", "")},
+                    "citations": data.get("citations", []),
+                }
+        except Exception as e:
+            # graceful fallback on error
+            answer_msg = {
+                "role": "assistant",
+                "content": {
+                    "text": (
+                        "Chat backend call failed, so I'm falling back to a simple response.\n\n"
+                        f"Error: {e}"
+                    )
+                },
+                "citations": [],
+            }
 
-    # Append assistant turn
+    # Append assistant turn & render
     st.session_state["messages"].append(answer_msg)
     render_message(answer_msg)
 
@@ -144,4 +174,4 @@ if prompt:
     if len(st.session_state["messages"]) > 60:
         st.session_state["messages"] = st.session_state["messages"][-60:]
 
-st.markdown('</div>', unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
