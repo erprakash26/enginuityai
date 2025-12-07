@@ -9,8 +9,8 @@ import time
 import json
 import os
 import streamlit as st
-from ui.theme import load_css
-import httpx  # NEW
+import requests  # use requests instead of httpx
+
 
 # IMPORTANT: set_page_config should be called once in the main app page only (e.g., Home.py).
 # st.set_page_config(page_title="Upload", page_icon="📤", layout="wide")
@@ -111,7 +111,7 @@ with left:
                 payload = {"kind": "audio" if kind == "Audio" else "doc"}
 
                 # Adjust endpoint name when you implement it in FastAPI
-                resp = httpx.post(f"{FASTAPI_URL}/upload", data=payload, files=files, timeout=120.0)
+                resp = requests.post(f"{FASTAPI_URL}/upload", data=payload, files=files, timeout=120.0)
                 resp.raise_for_status()
 
                 st.write("• Backend chunking & labeling…")
